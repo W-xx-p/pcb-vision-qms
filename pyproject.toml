@@ -30,7 +30,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["httpx>=0.27,<1.0", "pytest>=8.0,<10.0", "ruff>=0.8,<1.0"]
 anomalib = [
-  "anomalib==2.2.0",
+  "anomalib==2.7.0",
   "openvino>=2025.0",
   "onnx>=1.17",
   "pandas>=2.2,<3",
