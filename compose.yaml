@@ -1,0 +1,241 @@
+x-qms-environment: &qms-environment
+  PCB_QMS_DATA_DIR: /app/data
+  PCB_QMS_DATABASE_URL: postgresql+psycopg://pcb_qms:${POSTGRES_PASSWORD:-qms-postgres-change-this}@postgres:5432/pcb_qms
+  PCB_QMS_REDIS_URL: redis://redis:6379/0
+  PCB_QMS_MINIO_ENDPOINT: minio:9000
+  PCB_QMS_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-qmsadmin}
+  PCB_QMS_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-qms-change-this-password}
+  PCB_QMS_MINIO_BUCKET: ${PCB_QMS_MINIO_BUCKET:-pcb-qms}
+  PCB_QMS_MINIO_SECURE: "0"
+
+services:
+  pcb-qms:
+    build:
+      context: .
+      dockerfile: Dockerfile.ml
+    image: pcb-vision-qms:ml
+    command: ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1"]
+    ports:
+      - "${PCB_QMS_HTTP_PORT:-8013}:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment: *qms-environment
+    volumes:
+      - pcb-qms-data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.ml
+    image: pcb-vision-qms:ml
+    command: ["python", "-m", "app.worker"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      <<: *qms-environment
+      HF_HOME: /app/data/huggingface
+    volumes:
+      - pcb-qms-data:/app/data
+    depends_on:
+      pcb-qms:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "from app.database import fetch_one; from app.services.infrastructure import redis_client; assert redis_client().ping() and fetch_one('SELECT 1 AS ready') == {'ready': 1}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  integration-worker:
+    build: .
+    image: pcb-vision-qms:enterprise
+    command: ["python", "-m", "app.integration_worker"]
+    env_file:
+      - path: .env
+        required: false
+    environment: *qms-environment
+    depends_on:
+      pcb-qms: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "from app.database import fetch_one; assert fetch_one('SELECT 1 AS ready') == {'ready': 1}"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  drift-worker:
+    build: .
+    image: pcb-vision-qms:enterprise
+    command: ["python", "-m", "app.drift_worker"]
+    env_file:
+      - path: .env
+        required: false
+    environment: *qms-environment
+    depends_on:
+      pcb-qms: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "from app.database import fetch_one; assert fetch_one('SELECT 1 AS ready') == {'ready': 1}"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  backup:
+    build: .
+    image: pcb-vision-qms:enterprise
+    command: ["sh", "-c", "while true; do python scripts/backup_postgres.py --retention-days 14; sleep ${PCB_QMS_BACKUP_INTERVAL_SECONDS:-86400}; done"]
+    env_file:
+      - path: .env
+        required: false
+    environment: *qms-environment
+    volumes:
+      - pcb-qms-data:/app/data
+    depends_on:
+      pcb-qms:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "from pathlib import Path; assert any(Path('/app/data/backups').glob('*.dump'))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: pcb_qms
+      POSTGRES_USER: pcb_qms
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-qms-postgres-change-this}
+    ports:
+      - "127.0.0.1:${PCB_QMS_POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - pcb-qms-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pcb_qms -d pcb_qms"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - pcb-qms-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-qmsadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-qms-change-this-password}
+    ports:
+      - "9001:9001"
+    volumes:
+      - pcb-qms-objects:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.7.1
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=30d"]
+    ports: ["127.0.0.1:${PCB_QMS_PROMETHEUS_PORT:-9090}:9090"]
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - pcb-qms-prometheus:/prometheus
+    depends_on: [pcb-qms, alertmanager]
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    command: ["--config.file=/etc/alertmanager/alertmanager.yml"]
+    ports: ["127.0.0.1:${PCB_QMS_ALERTMANAGER_PORT:-9093}:9093"]
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    restart: unless-stopped
+
+  alert-webhook:
+    build: .
+    image: pcb-vision-qms:enterprise
+    command: ["python", "-m", "app.alert_receiver"]
+    env_file:
+      - path: .env
+        required: false
+    environment: *qms-environment
+    depends_on:
+      postgres: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.Request('http://127.0.0.1:8080/alerts', data=b'{}', method='POST'); assert urllib.request.urlopen(r, timeout=3).status == 202"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:12.2.0
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-qmsadmin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-grafana-change-this}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports: ["127.0.0.1:${PCB_QMS_GRAFANA_PORT:-3000}:3000"]
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - pcb-qms-grafana:/var/lib/grafana
+    depends_on: [prometheus]
+    restart: unless-stopped
+
+  gateway:
+    image: nginx:1.28-alpine
+    profiles: ["production"]
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ${PCB_QMS_TLS_DIR:-./deploy/tls}:/etc/nginx/tls:ro
+    depends_on: [pcb-qms]
+    restart: unless-stopped
+
+volumes:
+  pcb-qms-data:
+  pcb-qms-postgres:
+  pcb-qms-redis:
+  pcb-qms-objects:
+  pcb-qms-prometheus:
+  pcb-qms-grafana:

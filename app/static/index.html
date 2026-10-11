@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#07110f">
+  <title>PCB Vision QMS</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="runtime-warning hidden" id="runtime-warning">
+    当前是静态预览模式。完整功能请运行 <code>uvicorn app.main:app --reload</code> 后访问 <strong>http://127.0.0.1:8000</strong>。
+  </div>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+      <div>
+        <span class="eyebrow">ELECTRONICS QUALITY INTELLIGENCE</span>
+        <h1>PCB Vision <em>QMS</em></h1>
+      </div>
+    </div>
+    <nav class="main-nav" aria-label="主要导航">
+      <button class="nav-button active" data-view="overview">总览</button>
+      <button class="nav-button" data-view="inspection">检测中心</button>
+      <button class="nav-button" data-view="manufacturing">制造管理</button>
+      <button class="nav-button" data-view="quality">质量分析</button>
+      <button class="nav-button" data-view="experiments" data-roles="admin,engineer,auditor">模型实验</button>
+    </nav>
+    <div class="auth-control">
+      <button id="login-trigger" class="login-trigger">登录</button>
+      <div class="user-pill hidden" id="user-pill"><span class="user-avatar" id="user-avatar">A</span><span><strong id="current-user">本地管理员</strong><small id="current-role">ADMIN</small></span><button id="logout-button" aria-label="退出登录">↗</button></div>
+      <span class="system-state"><span class="pulse"></span><span>服务在线</span></span>
+    </div>
+  </header>
+
+  <main id="overview">
+    <div class="page-view active" data-page="overview">
+    <section class="hero panel" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="kicker"><span></span> AI-POWERED VISUAL INSPECTION</p>
+        <h2 id="hero-title">让每一块 PCB<br><strong>都有质量依据。</strong></h2>
+        <p>以少量正常样本建立外观基线，自动定位未知缺陷，并将检测、复核、告警与质量追溯汇聚到同一工作台。</p>
+        <div class="hero-tags"><span>少样本学习</span><span>实时推理</span><span>质量闭环</span><span>MES Ready</span></div>
+      </div>
+      <div class="hero-visual" aria-hidden="true">
+        <div class="scan-line"></div>
+        <div class="pcb-board">
+          <i></i><i></i><i></i><i></i><i></i><i></i>
+          <div class="chip">AI</div>
+          <div class="target-ring"></div>
+        </div>
+        <div class="visual-status"><span></span>视觉模型运行中</div>
+      </div>
+      <button class="primary hero-action" id="open-product-dialog" data-roles="admin,engineer"><span>＋</span> 新增产品型号</button>
+    </section>
+
+    <section class="metrics" id="metrics">
+      <article><div class="metric-icon cyan">▦</div><div><span>产品型号</span><strong id="metric-products">0</strong><small>Product Models</small></div></article>
+      <article><div class="metric-icon green">⌁</div><div><span>累计检测</span><strong id="metric-inspections">0</strong><small>Total Inspections</small></div></article>
+      <article><div class="metric-icon red">◇</div><div><span>异常数量</span><strong id="metric-anomalies">0</strong><small>Anomalies</small></div></article>
+      <article><div class="metric-icon amber">✓</div><div><span>待复核</span><strong id="metric-pending">0</strong><small>Pending Review</small></div></article>
+      <article><div class="metric-icon purple">!</div><div><span>未处理告警</span><strong id="metric-alerts">0</strong><small>Open Alerts</small></div></article>
+    </section>
+    </div>
+
+    <section class="workspace page-view" data-page="inspection" id="inspection-center">
+      <aside class="panel product-panel">
+        <div class="section-heading">
+          <div><span class="eyebrow">PRODUCTS</span><h3>产品型号</h3></div>
+          <button class="icon-button" id="refresh-products" title="刷新">↻</button>
+        </div>
+        <div id="product-list" class="product-list"></div>
+      </aside>
+
+      <section class="panel inspection-panel">
+        <div class="empty-state" id="empty-state">
+          <div class="board-icon">⌁</div>
+          <h3>选择或创建产品型号</h3>
+          <p>上传正常参考图片后即可执行异常检测。</p>
+        </div>
+
+        <div id="product-workspace" class="hidden">
+          <div class="section-heading product-header">
+            <div>
+              <span class="eyebrow" id="selected-code"></span>
+              <h3 id="selected-name"></h3>
+              <p id="selected-description"></p>
+            </div>
+            <label class="threshold-control">
+              判定阈值
+              <input type="number" id="threshold" min="0.01" max="0.99" step="0.01">
+              <button id="save-threshold" data-roles="admin,engineer">保存</button>
+            </label>
+          </div>
+
+          <div class="action-grid">
+            <form id="reference-form" class="upload-card" data-roles="admin,engineer">
+              <span class="step">01</span>
+              <h4>登记正常参考图</h4>
+              <p>建议图片拍摄角度、光照和工位保持一致。</p>
+              <input type="file" id="reference-files" accept="image/*" multiple required>
+              <button type="submit">上传正常样本</button>
+              <small id="reference-count">已登记 0 张</small>
+            </form>
+
+            <form id="inspection-form" class="upload-card accent" data-roles="admin,engineer,inspector">
+              <span class="step">02</span>
+              <h4>执行产品检测</h4>
+              <p>系统将返回异常分数、判定结果和定位热力图。</p>
+              <input type="text" id="inspection-lot" placeholder="批次号（可选）">
+              <input type="text" id="inspection-serial" placeholder="产品SN（可选）">
+              <input type="text" id="inspection-station" placeholder="工位编码（可选）">
+              <input type="text" id="inspection-shift" placeholder="班次（可选）">
+              <input type="file" id="inspection-file" accept="image/*" required>
+              <div class="upload-preview hidden" id="inspection-preview"><img alt="待检测图片预览"><button type="button" id="clear-inspection-file" aria-label="移除图片">×</button></div>
+              <button type="submit">开始检测</button>
+              <small id="inspection-status">支持 JPG、PNG、BMP、WEBP</small>
+            </form>
+
+            <form id="training-form" class="upload-card" data-roles="admin,engineer">
+              <span class="step">03</span>
+              <h4>训练并发布模型</h4>
+              <p>基线模型立即可用；PatchCore需要安装可选Anomalib依赖。</p>
+              <select id="training-backend">
+                <option value="reference">参考图基线</option>
+                <option value="patchcore">Anomalib PatchCore</option>
+                <option value="padim">Anomalib PaDiM</option>
+                <option value="efficientad">Anomalib EfficientAD</option>
+              </select>
+              <select id="training-dataset"><option value="">当前参考图（未冻结）</option></select>
+              <label class="inline-check"><input type="checkbox" id="training-tiling">启用高分辨率切片</label>
+              <div class="inline-fields"><input type="number" id="training-tile-size" value="512" min="128" max="2048" title="切片尺寸"><input type="number" id="training-tile-overlap" value="0.2" min="0" max="0.74" step="0.05" title="重叠比例"><input type="number" id="training-batch-size" value="8" min="1" max="64" title="批大小"></div>
+              <button type="submit">创建模型版本</button>
+              <small id="model-status">尚未训练正式模型</small>
+            </form>
+
+            <form id="batch-form" class="upload-card" data-roles="admin,engineer,inspector">
+              <span class="step">04</span>
+              <h4>批次检测</h4>
+              <p>一次检测最多100张产品图，并使用同一批次号归档。</p>
+              <input type="text" id="batch-lot" placeholder="批次号" required>
+              <input type="text" id="batch-station" placeholder="工位编码（可选）">
+              <input type="text" id="batch-shift" placeholder="班次（可选）">
+              <input type="file" id="batch-files" accept="image/*" multiple required>
+              <button type="submit">开始批量检测</button>
+              <small id="batch-status">等待上传</small>
+            </form>
+          </div>
+
+          <div class="quality-console">
+            <div><span class="eyebrow">SPC</span><h4>过程统计控制</h4><p id="spc-message">检测后生成控制限。</p></div>
+            <div class="evaluation-metrics">
+              <div><span>均值</span><strong id="spc-mean">—</strong></div>
+              <div><span>标准差</span><strong id="spc-sigma">—</strong></div>
+              <div><span>UCL</span><strong id="spc-ucl">—</strong></div>
+              <div><span>失控点</span><strong id="spc-ooc">—</strong></div>
+            </div>
+            <div class="evaluation-actions"><button id="refresh-spc">刷新SPC</button></div>
+          </div>
+
+          <div class="quality-console">
+            <div>
+              <span class="eyebrow">VALIDATION</span>
+              <h4>已复核样本评估</h4>
+              <p id="evaluation-message">复核正常与异常检测记录后，可计算质量指标并校准阈值。</p>
+            </div>
+            <div class="evaluation-metrics">
+              <div><span>Precision</span><strong id="eval-precision">—</strong></div>
+              <div><span>Recall</span><strong id="eval-recall">—</strong></div>
+              <div><span>F1</span><strong id="eval-f1">—</strong></div>
+              <div><span>误报率</span><strong id="eval-fpr">—</strong></div>
+            </div>
+            <div class="evaluation-actions">
+              <button id="refresh-evaluation">刷新评估</button>
+              <button id="calibrate-threshold" data-roles="admin,engineer">自动校准阈值</button>
+            </div>
+          </div>
+
+          <div class="result-view hidden" id="result-view">
+            <div class="result-summary">
+              <span class="status-badge" id="result-decision"></span>
+              <div><span>异常分数</span><strong id="result-score"></strong></div>
+              <div><span>当前阈值</span><strong id="result-threshold"></strong></div>
+              <div><span>采集质量</span><strong id="result-quality"></strong></div>
+            </div>
+            <div class="compare-toolbar"><span>热力图叠加</span><input id="heatmap-opacity" type="range" min="0" max="100" value="55" aria-label="热力图透明度"><output id="heatmap-opacity-value">55%</output></div>
+            <div class="compare-stage">
+              <img id="result-image" alt="待检产品">
+              <img id="result-heatmap" class="heatmap-overlay" alt="异常热力图">
+              <span class="compare-label">异常热力图叠加预览</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <section class="panel operations-panel page-view" data-page="manufacturing" id="manufacturing">
+      <div class="section-heading"><div><span class="eyebrow">MANUFACTURING CONTROL</span><h3>产线、工位与质量告警</h3></div></div>
+      <div class="operations-grid">
+        <form id="line-form" class="compact-form" data-roles="admin,engineer">
+          <h4>新增产线</h4><input name="code" placeholder="LINE-A" required><input name="name" placeholder="SMT A线" required><input name="location" placeholder="厂区/楼层"><button>保存产线</button>
+        </form>
+        <form id="station-form" class="compact-form" data-roles="admin,engineer">
+          <h4>新增检测工位</h4><select name="line_id" id="station-line" required></select><input name="code" placeholder="AOI-01" required><input name="name" placeholder="AOI检测工位" required><input name="camera_identifier" placeholder="相机编号"><button>保存工位</button>
+        </form>
+        <form id="rule-form" class="compact-form" data-roles="admin,engineer">
+          <h4>新增质量规则</h4><input name="name" placeholder="连续异常停线规则" required><input name="window_size" type="number" value="20" min="5"><input name="max_anomaly_rate" type="number" value="0.2" min="0" max="1" step="0.01"><input name="max_consecutive_anomalies" type="number" value="3" min="1"><button>保存规则</button>
+        </form>
+      </div>
+      <div class="table-wrap"><table><thead><tr><th>时间</th><th>产品</th><th>规则</th><th>级别</th><th>原因</th><th>状态</th><th>操作</th></tr></thead><tbody id="alerts-body"></tbody></table></div>
+    </section>
+
+    <div class="page-view" data-page="quality">
+    <div class="page-titlebar"><div><span class="eyebrow">QUALITY INTELLIGENCE</span><h2>质量分析中心</h2><p>基于检测与人工复核数据评估制程稳定性和模型表现。</p></div><label>分析产品<select id="analytics-product-select"><option value="">请选择产品</option></select></label></div>
+    <section class="analytics-grid" aria-label="质量趋势分析">
+      <article class="panel chart-panel chart-wide">
+        <div class="chart-heading"><div><span class="eyebrow">QUALITY TREND</span><h3>每日检测量与异常率</h3></div><span id="trend-summary" class="chart-summary">请选择产品</span></div>
+        <svg id="quality-trend-chart" class="quality-chart" role="img" aria-label="每日检测量与异常率趋势图"></svg>
+      </article>
+      <article class="panel chart-panel">
+        <div class="chart-heading"><div><span class="eyebrow">SPC CONTROL</span><h3>异常分数控制图</h3></div><span id="spc-chart-summary" class="chart-summary">暂无数据</span></div>
+        <svg id="spc-control-chart" class="quality-chart" role="img" aria-label="异常分数SPC控制图"></svg>
+      </article>
+      <article class="panel chart-panel">
+        <div class="chart-heading"><div><span class="eyebrow">CONFUSION MATRIX</span><h3>模型复核矩阵</h3></div><span id="matrix-summary" class="chart-summary">待复核样本</span></div>
+        <div class="confusion-matrix" id="confusion-matrix">
+          <div class="matrix-axis">人工结果 →</div><div class="matrix-cell good"><span>TP</span><strong>—</strong></div><div class="matrix-cell bad"><span>FP</span><strong>—</strong></div>
+          <div class="matrix-axis">系统判定 ↓</div><div class="matrix-cell bad"><span>FN</span><strong>—</strong></div><div class="matrix-cell good"><span>TN</span><strong>—</strong></div>
+        </div>
+      </article>
+    </section>
+
+    <section class="panel records-panel" id="quality-records">
+      <div class="section-heading">
+        <div><span class="eyebrow">QUALITY RECORDS</span><h3>最近检测记录</h3></div>
+        <a class="export-link" href="/api/reports/inspections.csv">导出CSV报告</a>
+      </div>
+      <form id="record-filters" class="record-filters"><input name="lot_number" placeholder="批次号"><input name="serial_number" placeholder="产品 SN"><select name="decision"><option value="">全部判定</option><option value="normal">正常</option><option value="anomaly">异常</option></select><select name="review_status"><option value="">全部复核状态</option><option value="pending">待复核</option><option value="reviewed">已复核</option></select><button>查询</button><button type="reset">重置</button></form>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>时间</th><th>产品</th><th>文件</th><th>异常分数</th><th>系统判定</th><th>复核状态</th><th>操作</th></tr></thead>
+          <tbody id="records-body"></tbody>
+        </table>
+      </div>
+    </section>
+    </div>
+
+    <div class="page-view" data-page="experiments">
+      <div class="page-titlebar"><div><span class="eyebrow">MODEL GOVERNANCE</span><h2>数据版本与实验中心</h2><p>冻结训练数据、检查泄漏门禁，并对比每个模型实验的参数、指标与发布状态。</p></div><label>产品型号<select id="experiment-product-select"><option value="">请选择产品</option></select></label></div>
+      <section class="lineage-summary">
+        <article class="panel lineage-action"><span class="eyebrow">DATA SNAPSHOT</span><h3>冻结当前正常样本</h3><p>生成不可变数据版本、样本哈希与数据质量报告。</p><input id="snapshot-name" value="production-references" placeholder="数据集名称"><button id="create-snapshot" data-roles="admin,engineer">创建数据版本</button></article>
+        <article class="panel lineage-kpis"><div><span>数据版本</span><strong id="lineage-dataset-count">0</strong></div><div><span>实验次数</span><strong id="lineage-experiment-count">0</strong></div><div><span>门禁通过</span><strong id="lineage-passed-count">0</strong></div><div><span>活动模型</span><strong id="lineage-active-model">—</strong></div></article>
+      </section>
+      <section class="panel lineage-panel"><div class="section-heading"><div><span class="eyebrow">IMMUTABLE DATASETS</span><h3>数据集版本</h3></div><button class="icon-button" id="refresh-experiments">↻</button></div><div id="dataset-version-grid" class="dataset-version-grid"><p class="muted">请选择产品。</p></div></section>
+      <section class="panel lineage-panel"><div class="section-heading"><div><span class="eyebrow">MODEL COMPARISON</span><h3>模型版本对比</h3></div></div><div class="table-wrap"><table><thead><tr><th>版本</th><th>后端</th><th>数据版本</th><th>状态</th><th>发布门禁</th><th>F1</th><th>Recall</th><th>切片配置</th></tr></thead><tbody id="model-comparison-body"></tbody></table></div></section>
+      <section class="panel lineage-panel"><div class="section-heading"><div><span class="eyebrow">EXPERIMENT LINEAGE</span><h3>实验血缘</h3></div></div><div class="table-wrap"><table><thead><tr><th>时间</th><th>实验</th><th>模型</th><th>数据清单</th><th>代码版本</th><th>状态</th><th>主要参数</th></tr></thead><tbody id="experiment-lineage-body"></tbody></table></div></section>
+    </div>
+  </main>
+
+  <dialog id="product-dialog">
+    <form id="product-form">
+      <div class="dialog-heading"><div><span class="eyebrow">NEW PRODUCT</span><h3>创建产品型号</h3></div><button type="button" class="close" id="close-dialog">×</button></div>
+      <label>产品编码<input name="code" placeholder="PCB-A100" pattern="[A-Za-z0-9_-]+" required></label>
+      <label>产品名称<input name="name" placeholder="主控板 A100" required></label>
+      <label>产品说明<textarea name="description" placeholder="检测元器件缺失、偏移和表面异常"></textarea></label>
+      <label>初始阈值<input name="threshold" type="number" min="0.01" max="0.99" step="0.01" value="0.18" required></label>
+      <button type="submit" class="primary">创建并开始配置</button>
+    </form>
+  </dialog>
+
+  <dialog id="login-dialog" class="login-dialog">
+    <form id="login-form">
+      <div class="login-brand"><div class="brand-mark"><span></span><span></span><span></span><span></span></div><div><span class="eyebrow">SECURE ACCESS</span><h3>登录质量管理平台</h3></div></div>
+      <p>请输入管理员分配的访问密钥。登录后系统会根据你的角色显示可用功能。</p>
+      <label>访问密钥<input id="login-api-key" type="password" autocomplete="current-password" placeholder="请输入 API Key" required></label>
+      <p class="form-error hidden" id="login-error" role="alert"></p>
+      <button type="submit" class="primary">安全登录</button>
+      <button type="button" class="dialog-secondary" id="close-login">取消</button>
+    </form>
+  </dialog>
+
+  <dialog id="inspection-detail-dialog" class="detail-dialog">
+    <div class="detail-dialog-body"><div class="dialog-heading"><div><span class="eyebrow">INSPECTION DETAIL</span><h3 id="detail-title">检测详情</h3></div><button type="button" class="close" id="close-inspection-detail">×</button></div><div id="inspection-detail-content"></div></div>
+  </dialog>
+
+  <div class="toast hidden" id="toast"></div>
+  <script src="./app.js"></script>
+</body>
+</html>

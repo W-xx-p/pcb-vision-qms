@@ -1,0 +1,64 @@
+name: VisA PCB benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      backends:
+        description: Space-separated backends
+        required: true
+        default: "reference patchcore padim efficientad"
+  schedule:
+    - cron: "23 18 * * 6"
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free disk space
+        run: sudo rm -rf /usr/local/lib/android /opt/ghc /usr/share/dotnet
+      - name: Build reproducible ML image
+        run: docker build -f Dockerfile.ml -t pcb-qms-ml:benchmark .
+      - name: Download and prepare official VisA PCB split
+        run: >-
+          docker run --rm -v "${{ github.workspace }}/benchmark-data:/app/data"
+          pcb-qms-ml:benchmark python scripts/prepare_visa.py
+          --work-dir /app/data/visa-work --output /app/data/visa
+      - name: Prepare cached EfficientAD teacher weights
+        shell: bash
+        run: |
+          mkdir -p benchmark-data/pre_trained benchmark-data/model-cache
+          for attempt in 1 2 3; do
+            if docker run --rm \
+              -v "${{ github.workspace }}/benchmark-data/pre_trained:/app/pre_trained" \
+              pcb-qms-ml:benchmark python -c \
+              "from anomalib.models import EfficientAd; m=EfficientAd(imagenet_dir='/tmp'); m.prepare_pretrained_model()"; then
+              exit 0
+            fi
+            sleep $((attempt * 5))
+          done
+          exit 1
+      - name: Run model benchmark
+        run: >-
+          docker run --rm -v "${{ github.workspace }}/benchmark-data:/app/data" -v "${{ github.workspace }}/benchmark-data/model-cache:/home/qms/.cache" -v "${{ github.workspace }}/benchmark-data/pre_trained:/app/pre_trained"
+          pcb-qms-ml:benchmark python scripts/benchmark_visa.py
+          --dataset /app/data/visa --output /app/data/results
+          --backends ${{ inputs.backends || 'reference patchcore padim efficientad' }}
+          --train-samples 64
+          --patchcore-coreset-ratio 0.01
+          --seeds 17 42 73
+      - name: Upload immutable benchmark report
+        uses: actions/upload-artifact@v4
+        with:
+          name: visa-pcb-benchmark-${{ github.sha }}
+          path: |
+            benchmark-data/results/report.json
+            benchmark-data/results/summary.csv
+            benchmark-data/results/aggregate.csv
+            benchmark-data/results/checkpoint.json
+            benchmark-data/visa/manifest.json
+          retention-days: 30

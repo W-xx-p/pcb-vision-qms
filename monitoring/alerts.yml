@@ -1,0 +1,23 @@
+groups:
+  - name: pcb-qms
+    rules:
+      - alert: PcbQmsApiDown
+        expr: up{job="pcb-qms"} == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations: {summary: "PCB QMS API unavailable"}
+      - alert: PcbQmsHighErrorRate
+        expr: rate(pcb_qms_http_errors_total[5m]) / clamp_min(rate(pcb_qms_http_requests_total[5m]), 0.001) > 0.05
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: "PCB QMS 5xx rate exceeds 5%"}
+      - alert: PcbQmsTrainingBacklog
+        expr: pcb_qms_training_queue_lag > 10
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "Training queue backlog"}
+      - alert: PcbQmsOpenQualityAlerts
+        expr: pcb_qms_open_quality_alerts > 0
+        for: 2m
+        labels: {severity: warning}
+        annotations: {summary: "Unresolved production quality alert"}

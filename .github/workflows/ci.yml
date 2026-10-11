@@ -1,0 +1,71 @@
+name: Enterprise acceptance
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality-and-postgres:
+    timeout-minutes: 20
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: pcb_qms_test
+          POSTGRES_USER: pcb_qms
+          POSTGRES_PASSWORD: ci-postgres-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pcb_qms -d pcb_qms_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      PCB_QMS_DATABASE_URL: postgresql+psycopg://pcb_qms:ci-postgres-password@127.0.0.1:5432/pcb_qms_test
+      PCB_QMS_TEST_DATABASE_URL: postgresql+psycopg://pcb_qms:ci-postgres-password@127.0.0.1:5432/pcb_qms_test
+      PCB_QMS_CODE_VERSION: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install PostgreSQL backup client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Install test dependencies
+        run: pip install -e ".[dev]"
+      - name: Static analysis
+        run: ruff check app tests scripts edge performance migrations
+      - name: Verify installed dependencies
+        run: pip check
+      - name: Check frontend JavaScript
+        run: node --check app/static/app.js
+      - name: Upgrade a blank PostgreSQL database
+        run: alembic upgrade head
+      - name: Verify migration head
+        run: test "$(alembic current 2>/dev/null | cut -d' ' -f1)" = "20261007_0004"
+      - name: Unit, API, lineage and concurrency acceptance
+        run: pytest -q
+
+  container-contract:
+    timeout-minutes: 25
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose contract
+        run: docker compose -f compose.yaml config --quiet
+      - name: Validate production Compose overlay
+        run: docker compose --env-file .env.production.example -f compose.yaml -f compose.production.yaml --profile production config --quiet
+      - name: Build production application image
+        run: docker build -t pcb-qms:${{ github.sha }} .
+      - name: Container import smoke test
+        run: docker run --rm pcb-qms:${{ github.sha }} python -c "from app.main import app; assert app.version"

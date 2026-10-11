@@ -1,0 +1,40 @@
+x-production-environment: &production-environment
+  PCB_QMS_ENV: production
+  PCB_QMS_SECURE_COOKIES: "1"
+  PCB_QMS_DATABASE_URL: postgresql+psycopg://pcb_qms:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/pcb_qms
+  PCB_QMS_REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD}@redis:6379/0
+  PCB_QMS_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
+  PCB_QMS_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+  PCB_QMS_MODEL_SIGNING_KEY: ${PCB_QMS_MODEL_SIGNING_KEY:?set PCB_QMS_MODEL_SIGNING_KEY}
+  PCB_QMS_API_KEYS: ${PCB_QMS_API_KEYS:?set PCB_QMS_API_KEYS}
+
+services:
+  pcb-qms:
+    environment: *production-environment
+  worker:
+    environment: *production-environment
+  integration-worker:
+    environment: *production-environment
+  drift-worker:
+    environment: *production-environment
+  backup:
+    environment: *production-environment
+  alert-webhook:
+    environment: *production-environment
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+  redis:
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD}", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a '$${REDIS_PASSWORD}' ping"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD}
+  minio:
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+  grafana:
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?set GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD}

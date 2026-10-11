@@ -1,0 +1,17 @@
+{
+  "station_id": 1,
+  "software_version": "edge-1.0",
+  "heartbeat_seconds": 30,
+  "max_spool_bytes": 2147483648,
+  "server": "https://qms.example.com",
+  "api_key": "replace-with-station-key",
+  "product_id": 1,
+  "station_code": "AOI-01",
+  "camera": "0",
+  "replay_dir": "",
+  "spool_dir": "edge-spool",
+  "lot_number": "",
+  "shift": "A",
+  "interval_seconds": 1,
+  "ca_file": true
+}

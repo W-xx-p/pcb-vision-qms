@@ -1,0 +1,38 @@
+---
+name: Feature request
+description: Propose an industrial inspection, integration, or platform improvement
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Manufacturing problem
+      description: Describe the production, quality, model, or integration problem.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed capability
+      description: Explain the expected behavior and users.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List measurable functional or operational acceptance criteria.
+    validations:
+      required: true
+  - type: dropdown
+    id: validation
+    attributes:
+      label: Validation status
+      options:
+        - Design proposal only
+        - Tested with synthetic data
+        - Tested with public data
+        - Tested on a production line
+    validations:
+      required: true

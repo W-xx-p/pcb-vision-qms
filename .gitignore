@@ -1,0 +1,40 @@
+__pycache__/
+*.py[cod]
+.Python
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+dist/
+build/
+.coverage
+coverage.xml
+htmlcov/
+
+# Secrets and machine-local configuration
+.env
+.env.*
+!.env.example
+!.env.production.example
+deploy/tls/
+edge/station.json
+
+# Runtime data and generated ML artifacts
+*.db
+*.db-shm
+*.db-wal
+*.sqlite*
+data/*
+!data/.gitkeep
+demo-data/
+benchmark-data/
+edge/spool/
+.audit-*/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

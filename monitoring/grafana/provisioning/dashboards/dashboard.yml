@@ -1,0 +1,6 @@
+apiVersion: 1
+providers:
+  - name: PCB QMS
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards
