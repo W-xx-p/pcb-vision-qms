@@ -33,7 +33,7 @@ anomalib = [
   "anomalib==2.2.0",
   "openvino>=2025.0",
   "onnx>=1.17",
-  "pandas>=2.2,<3",
+  "pandas>=2.2,<4",
 ]
 edge = ["opencv-python-headless>=4.10,<5.0"]
 load = ["locust>=2.32,<3.0"]
