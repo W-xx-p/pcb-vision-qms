@@ -35,7 +35,7 @@ anomalib = [
   "onnx>=1.17",
   "pandas>=2.2,<3",
 ]
-edge = ["opencv-python-headless>=4.10,<5.0"]
+edge = ["opencv-python-headless>=4.10,<6.0"]
 load = ["locust>=2.32,<3.0"]
 
 [tool.pytest.ini_options]
